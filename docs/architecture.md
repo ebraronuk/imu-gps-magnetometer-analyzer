@@ -6,7 +6,7 @@ Amaç, aviyonik sensör preprocessing zincirinin uçtan uca nasıl işlendiğini
 # 1. Genel Veri Akışı
 
 Aşağıdaki şema, ham sensör loglarının GUI veya CLI üzerinden pipeline’a girip analiz çıktısına dönüşmesini göstermektedir:
-
+```
 RAW SENSOR LOGS
 (accel, gyro, mag, GPS, pressure)
         │
@@ -35,6 +35,8 @@ FFT Analysis
         ▼
 Visualization & Reporting
 (Plotly, Matplotlib, HTML report)
+
+```
 
 # 2. Pipeline Katmanları
 2.1. Data Loaders

@@ -24,63 +24,54 @@ Bu çalışma hem öğrenme amaçlıdır hem de gerçek telemetri preprocessing 
 - Sentetik uçuş verisi simülasyonu
 
 ## Uçtan Uca Pipeline Mimarisi
-
-┌─────────────────────────────────────────────────────┐
-│                   RAW SENSOR LOGS                   │
-│  accel_x, accel_y, accel_z                          │
-│  mag_x, mag_y, mag_z                                │
-│  gyro_x/y/z, GPS, pressure…                         │
-└─────────────────────────────────────────────────────┘
-                       │
-                       ▼
-┌─────────────────────────────────────────────────────┐
-│                  CSV Loader Module                  │
-│  • Kolon doğrulama                                   │
-│  • Temizleme                                         │
-│  • Timestamp parse                                   │
-└─────────────────────────────────────────────────────┘
-                       │
-                       ▼
-┌─────────────────────────────────────────────────────┐
-│          Time Synchronization & Resampling           │
-│  • Uniform time grid                                 │
-│  • Eksik örnek doldurma (ffill)                      │
-│  • Opsiyonel z-score normalizasyon                   │
-└─────────────────────────────────────────────────────┘
-                       │
-                       ▼
-┌─────────────────────────────────────────────────────┐
-│              Magnetometer Calibration                │
-│  • Hard-iron bias çıkarımı                           │
-│  • Soft-iron ellipsoid fitting                       │
-│  • PSD regularization                                │
-│  • Inverse sqrt transform                            │
-│  • Veri azsa güvenli fallback                        │
-└─────────────────────────────────────────────────────┘
-                       │
-                       ▼
-┌─────────────────────────────────────────────────────┐
-│                Orientation Estimation                │
-│  • Tilt-compensated heading                          │
-│  • Complementary filter (gyro + mag)                 │
-│  • Angle unwrap                                      │
-└─────────────────────────────────────────────────────┘
-                       │
-                       ▼
-┌─────────────────────────────────────────────────────┐
-│                 FFT & Noise Analysis                 │
-│  • Frekans alanı                                     │
-│  • Titreşim & gürültü karakterizasyonu               │
-└─────────────────────────────────────────────────────┘
-                       │
-                       ▼
-┌─────────────────────────────────────────────────────┐
-│                   Visualization                      │
-│  • Zaman serisi grafikler                            │
-│  • Heading trajectory                                │
-│  • FFT spektrum                                      │
-│  • Kalibrasyon öncesi/sonrası dağılım                │
-└─────────────────────────────────────────────────────┘
+```
+┌────────────────────────────────────────────────────────────────────────────┐
+│                             RAW SENSOR LOGS                                │
+│ accel_x, accel_y, accel_z | mag_x, mag_y, mag_z | gyro_z | GPS | pressure │
+└────────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌────────────────────────────────────────────────────────────────────────────┐
+│                           CSV Loader Module                                │
+│ • Kolon doğrulama • Temizleme • Timestamp parse                            │
+└────────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌────────────────────────────────────────────────────────────────────────────┐
+│                Time Synchronization & Resampling                           │
+│ • Uniform time grid • Eksik örnek doldurma (ffill)                         │
+│ • Opsiyonel z-score normalizasyon                                          │
+└────────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌────────────────────────────────────────────────────────────────────────────┐
+│                        Magnetometer Calibration                             │
+│ • Hard-iron bias çıkarımı                                                  │
+│ • Soft-iron ellipsoid fitting                                              │
+│ • PSD regularization • Inverse sqrt transform                              │
+│ • Veri azsa güvenli fallback                                               │
+└────────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌────────────────────────────────────────────────────────────────────────────┐
+│                          Orientation Estimation                             │
+│ • Tilt-compensated heading                                                 │
+│ • Complementary filter (gyro+mag)                                          │
+│ • Angle unwrap                                                             │
+└────────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌────────────────────────────────────────────────────────────────────────────┐
+│                         FFT & Noise Analysis                                │
+│ • Frekans alanı • Titreşim & gürültü karakterizasyonu                      │
+└────────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌────────────────────────────────────────────────────────────────────────────┐
+│                               Visualization                                 │
+│ • Veri Özeti • Zaman Serisi • FFT • Heading • Kalibrasyon                  │
+└────────────────────────────────────────────────────────────────────────────┘
+```
 
 # GUI Kullanımı
 
