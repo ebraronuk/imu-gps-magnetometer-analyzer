@@ -99,6 +99,7 @@ Her tab sadece kendi ihtiyaç duyduğu artifact’leri işler.
 İster CLI ister GUI olsun, aynı core işlem hattı kullanılır ve bu modülerlik profesyonel avionik yazılım tasarım prensipleriyle uyumludur.
 
 # 4. Kod Organizasyonu
+```
 src/
 ├── pipeline/           # PipelineConfig, run_basic_pipeline
 ├── orientation/        # Tilt compensation, complementary filter
@@ -107,9 +108,13 @@ src/
 ├── visualization/      # Plotly + Matplotlib grafikleri
 ├── data_loaders/       # CSV loader
 └── gui/                # PyQt5 GUI
+```
 
 # 5. Test Yapısı
+```
+
 tests/
 ├── test_normalization.py
 ├── test_ellipsoid_fit.py
 └── test_pipeline.py
+```

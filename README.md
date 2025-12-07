@@ -97,9 +97,9 @@ GUI’nin mimarisi, ekran görüntüleri ve sekmelerin teknik açıklamaları i�
 ## Simülasyon Modülü
 
 Gerçek log olmadığında veya algoritmaların doğrulanması gerektiğinde:
-
+```
   --simulate-mag
-
+```
 
 ile sentetik manyetometre + gyro + ivme veri seti üretilir.
 
@@ -181,26 +181,26 @@ Proje şu mühendislik alanlarının birleşimidir:
 ##  Komut Örnekleri
 
 ### Özet
-
+```
   python -m src.main --input example_logs/heading_demo.csv --summary
-
+```
 
 ### FFT + Plot
-
+```
   python -m src.main --input example_logs/heading_demo.csv --fft --plot
-
+```
 
 ### Heading + Kalibrasyon
-
+```
   python -m src.main --input example_logs/heading_demo.csv --heading --mag-calib --plot
-
+```
 
 ### Sentetik veri
-
+```
   python -m src.main --simulate-mag --heading --fft --plot
-
+```
 ##  Proje Yapısı
-
+```
 src/
   pipeline/
   orientation/
@@ -211,7 +211,7 @@ src/
 example_logs/
 docs/
 tests/
-
+```
 
 ##  Projenin Amacı
 
