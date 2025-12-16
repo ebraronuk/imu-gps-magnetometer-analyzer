@@ -1,4 +1,6 @@
-"""PyQt5 ana pencere; pipeline sonuçlarını güvenli şekilde görselleştirir."""
+"""PyQt5 main window; safely visualizes pipeline outputs."""
+import time
+import webbrowser
 from pathlib import Path
 from typing import Optional
 
@@ -8,15 +10,32 @@ from matplotlib.backends.backend_qt5 import NavigationToolbar2QT as NavigationTo
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 from PyQt5 import QtWidgets
-from PyQt5.QtWebEngineWidgets import QWebEngineView  # type: ignore
+from src.pipeline.config_builder import build_pipeline_config
+
+try:
+    from PyQt5.QtWebEngineWidgets import QWebEngineView  # type: ignore
+
+    WEBENGINE_AVAILABLE = True
+except Exception:  # pylint: disable=broad-except
+    QWebEngineView = None  # type: ignore
+    WEBENGINE_AVAILABLE = False
 
 from src.pipeline.pipeline import AnalysisArtifacts, PipelineConfig, run_basic_pipeline
 from src.visualization.plot_fft import compute_fft
 from src.simulation.mag_simulator import generate_simulated_rotation
 
 
+def open_in_browser(html_path: Path) -> None:
+    """Varsayilan tarayicida HTML acar."""
+    try:
+        webbrowser.open(html_path.resolve().as_uri(), new=2)
+    except Exception:
+        # Tarayici acilamazsa sessizce devam.
+        pass
+
+
 class MatplotlibPane(QtWidgets.QWidget):
-    """Matplotlib kanvas ve toolbar taşıyan yardımcı sınıf."""
+    """Matplotlib kanvas ve toolbar tasiyan yardimci sinif."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -31,15 +50,15 @@ class MatplotlibPane(QtWidgets.QWidget):
 
 
 class MainWindow(QtWidgets.QMainWindow):
-    """Aviyonik sensör analizi için ana GUI penceresi."""
+    """Aviyonik sensor analizi icin ana GUI penceresi."""
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("IMU–GPS–Magnetometer Analyzer")
+        self.setWindowTitle("IMU-GPS-Magnetometer Analyzer")
         self.setMinimumSize(1200, 700)
         self.resize(1300, 850)
         self.status_bar = self.statusBar()
-        self._status("Hazır")
+        self._status("Hazir")
         self.synthetic_label = QtWidgets.QLabel("")
         self.synthetic_label.setStyleSheet("color: darkred;")
 
@@ -48,7 +67,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.connect_buttons()
 
     def _build_references(self) -> None:
-        """Widget referanslarını başlatır."""
+        """Widget referanslarini baslatir."""
         self.input_edit: Optional[QtWidgets.QLineEdit] = None
         self.time_edit: Optional[QtWidgets.QLineEdit] = None
         self.resample_edit: Optional[QtWidgets.QLineEdit] = None
@@ -60,6 +79,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.simulate_btn: Optional[QtWidgets.QPushButton] = None
 
         self.tabs: Optional[QtWidgets.QTabWidget] = None
+        self.summary_tab: Optional[QtWidgets.QWidget] = None
         self.summary_table: Optional[QtWidgets.QTableWidget] = None
         self.summary_text: Optional[QtWidgets.QTextEdit] = None
         self.timeseries_tab: Optional[MatplotlibPane] = None
@@ -70,10 +90,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self.calibration_tab: Optional[MatplotlibPane] = None
         self.calib_text: Optional[QtWidgets.QTextEdit] = None
         self.calib_metrics: Optional[QtWidgets.QTextEdit] = None
-        self.fft_web: Optional[QWebEngineView] = None
+        self.fft_web: Optional["QWebEngineView"] = None
+        self.fft_fallback_label: Optional[QtWidgets.QLabel] = None
 
     def setup_ui(self) -> None:
-        """Ana yerleşimi kurar."""
+        """Ana yerlesimi kurar."""
         central = QtWidgets.QWidget()
         main_layout = QtWidgets.QHBoxLayout()
         main_layout.setContentsMargins(12, 12, 12, 12)
@@ -91,7 +112,7 @@ class MainWindow(QtWidgets.QMainWindow):
         browse_btn = QtWidgets.QPushButton("Gözat")
         browse_btn.clicked.connect(self._browse_file)
         input_layout = QtWidgets.QHBoxLayout()
-        input_layout.addWidget(QtWidgets.QLabel("Giriş CSV"))
+        input_layout.addWidget(QtWidgets.QLabel("Giris CSV"))
         input_layout.addWidget(self.input_edit)
         input_layout.addWidget(browse_btn)
         control_layout.addLayout(input_layout)
@@ -100,7 +121,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.resample_edit = QtWidgets.QLineEdit("10ms")
         control_layout.addWidget(QtWidgets.QLabel("Zaman Kolonu"))
         control_layout.addWidget(self.time_edit)
-        control_layout.addWidget(QtWidgets.QLabel("Resample Aralığı"))
+        control_layout.addWidget(QtWidgets.QLabel("Resample Araligi"))
         control_layout.addWidget(self.resample_edit)
 
         self.summary_cb = QtWidgets.QCheckBox("Özet")
@@ -116,7 +137,7 @@ class MainWindow(QtWidgets.QMainWindow):
         control_layout.addWidget(self.heading_cb)
         control_layout.addWidget(self.calib_cb)
 
-        self.run_btn = QtWidgets.QPushButton("Analizi Çalıştır")
+        self.run_btn = QtWidgets.QPushButton("Analizi Çalistir")
         self.simulate_btn = QtWidgets.QPushButton("Sentetik Veri Üret ve Analiz Et")
         for btn in (self.run_btn, self.simulate_btn):
             btn.setMinimumWidth(200)
@@ -131,8 +152,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self.fft_tab = MatplotlibPane()
         self.heading_tab = MatplotlibPane()
         self.calibration_tab = MatplotlibPane()
-        self.fft_web = QWebEngineView()
-        self.fft_web.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
+        if WEBENGINE_AVAILABLE and QWebEngineView is not None:
+            self.fft_web = QWebEngineView()
+            self.fft_web.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
+        else:
+            self.fft_fallback_label = QtWidgets.QLabel("WebEngine yok, grafik tarayicida açilacak.")
+            self.fft_fallback_label.setStyleSheet("color: #d68b00;")
 
         self.summary_table = QtWidgets.QTableWidget()
         self.summary_text = QtWidgets.QTextEdit()
@@ -173,7 +198,10 @@ class MainWindow(QtWidgets.QMainWindow):
         fft_layout = QtWidgets.QVBoxLayout()
         fft_layout.addWidget(self.fft_tab.toolbar)
         fft_layout.addWidget(self.fft_tab.canvas)
-        fft_layout.addWidget(self.fft_web)
+        if self.fft_web is not None:
+            fft_layout.addWidget(self.fft_web)
+        elif self.fft_fallback_label is not None:
+            fft_layout.addWidget(self.fft_fallback_label)
         fft_wrapper = QtWidgets.QWidget()
         fft_wrapper.setLayout(fft_layout)
 
@@ -187,14 +215,14 @@ class MainWindow(QtWidgets.QMainWindow):
         main_layout.addWidget(self.tabs, 3)
 
     def connect_buttons(self) -> None:
-        """Buton sinyallerini bağlar."""
+        """Buton sinyallerini baglar."""
         if self.run_btn:
             self.run_btn.clicked.connect(self._safe_run_analysis)
         if self.simulate_btn:
             self.simulate_btn.clicked.connect(self._safe_run_synthetic)
 
     def _safe_run_analysis(self) -> None:
-        """Analiz tetikleyicisini güvenli şekilde çalıştırır."""
+        """Analiz tetikleyicisini güvenli sekilde çalistirir."""
         try:
             self.run_analysis()
         except Exception as exc:  # pylint: disable=broad-except
@@ -202,7 +230,7 @@ class MainWindow(QtWidgets.QMainWindow):
             QtWidgets.QMessageBox.critical(self, "Hata", str(exc))
 
     def _safe_run_synthetic(self) -> None:
-        """Sentetik tetikleyicisini güvenli şekilde çalıştırır."""
+        """Sentetik tetikleyicisini güvenli sekilde çalistirir."""
         try:
             self.run_synthetic()
         except Exception as exc:  # pylint: disable=broad-except
@@ -216,50 +244,57 @@ class MainWindow(QtWidgets.QMainWindow):
             self.input_edit.setText(path)
 
     def _status(self, message: str, is_error: bool = False) -> None:
-        """Durum mesajı günceller."""
+        """Durum mesajini günceller."""
         if is_error:
             self.status_bar.setStyleSheet("color: #ff6b6b;")
         else:
             self.status_bar.setStyleSheet("color: #e0e0e0;")
         self.status_bar.showMessage(message, 7000)
 
-    def _build_config(self, path: Path) -> PipelineConfig:
-        """GUI girdilerinden pipeline konfigürasyonu oluşturur."""
+    def _build_config(self, path: Path) -> Optional[PipelineConfig]:
+        """GUI girdilerinden pipeline konfigürasyonu olusturur ve dogrular."""
         time_col = self.time_edit.text().strip() if self.time_edit else "timestamp"
         resample = self.resample_edit.text().strip() if self.resample_edit else "10ms"
-        return PipelineConfig(
-            input_path=path,
-            time_column=time_col or "timestamp",
-            resample_rate=resample or "10ms",
-            normalize=True,
-            compute_fft=self.fft_cb.isChecked() if self.fft_cb else True,
-        )
+        try:
+            return build_pipeline_config(
+                input_path=path,
+                time_column=time_col or "timestamp",
+                resample_rate=resample or "10ms",
+                normalize=True,
+                compute_fft=self.fft_cb.isChecked() if self.fft_cb else True,
+            )
+        except Exception as exc:  # pylint: disable=broad-except
+            self._status(f"Konfigürasyon hatasi: {exc}", is_error=True)
+            QtWidgets.QMessageBox.critical(self, "Hata", f"Konfigürasyon hatasi: {exc}")
+            return None
 
     def run_analysis(self) -> None:
-        """Analiz akışını çalıştırır."""
+        """Analiz akislarini çalistirir."""
         if not self.input_edit:
             return
         path_text = self.input_edit.text().strip()
         if not path_text:
-            raise ValueError("CSV dosyası seçilmedi.")
+            raise ValueError("CSV dosyasi seçilmedi.")
         path = Path(path_text)
         if not path.exists():
-            raise FileNotFoundError("Seçilen CSV dosyası mevcut değil.")
+            raise FileNotFoundError("Seçilen CSV dosyasi mevcut degil.")
 
         cfg = self._build_config(path)
-        self._status("Analiz başlatıldı")
+        if cfg is None:
+            return
+        self._status("Analiz baslatildi")
         try:
             artifacts = run_basic_pipeline(cfg)
         except Exception as exc:  # pylint: disable=broad-except
             self._status(f"Hata: {exc}", is_error=True)
             QtWidgets.QMessageBox.critical(self, "Hata", str(exc))
-            self._status("Hata oluştu.", is_error=True)
+            self._status("Hata olustu.", is_error=True)
             return
-        self._status("Analiz tamamlandı")
+        self._status("Analiz tamamlandi")
         self.update_tabs(artifacts, cfg)
 
     def run_synthetic(self) -> None:
-        """Sentetik veri üretip analizi çalıştırır."""
+        """Sentetik veri üretip analizi çalistirir."""
         out_path = Path("example_logs/simulated_rotation.csv")
         try:
             generate_simulated_rotation(out_path=out_path)
@@ -273,39 +308,39 @@ class MainWindow(QtWidgets.QMainWindow):
         self.run_analysis()
 
     def update_tabs(self, artifacts: Optional[AnalysisArtifacts], cfg: PipelineConfig) -> None:
-        """Sekmeleri pipeline çıktısı ile günceller."""
+        """Sekmeleri pipeline çiktisi ile günceller."""
         if artifacts is None:
-            QtWidgets.QMessageBox.warning(self, "Uyarı", "Analiz çıktısı yok.")
+            QtWidgets.QMessageBox.warning(self, "Uyari", "Analiz çiktisi yok.")
             return
         time_col = cfg.time_column
 
         try:
             if self.summary_cb and self.summary_cb.isChecked():
                 self._update_summary_tab(artifacts, time_col)
-        except Exception as exc:
-            self._status(f"Özet sekmesi hatası: {exc}", is_error=True)
+        except Exception as exc:  # pylint: disable=broad-except
+            self._status(f"Özet sekmesi hatasi: {exc}", is_error=True)
         try:
             self._update_timeseries_tab(artifacts, time_col)
-        except Exception as exc:
-            self._status(f"Zaman serisi hatası: {exc}", is_error=True)
+        except Exception as exc:  # pylint: disable=broad-except
+            self._status(f"Zaman serisi hatasi: {exc}", is_error=True)
         try:
             self._update_fft_tab(artifacts, time_col, cfg.compute_fft)
-        except Exception as exc:
-            self._status(f"FFT hatası: {exc}", is_error=True)
+        except Exception as exc:  # pylint: disable=broad-except
+            self._status(f"FFT hatasi: {exc}", is_error=True)
         try:
             if self.heading_cb and self.heading_cb.isChecked():
                 self._update_heading_tab(artifacts, time_col)
             else:
-                self._clear_heading_tab("Heading hesaplanmadı.")
-        except Exception as exc:
-            self._status(f"Heading hatası: {exc}", is_error=True)
+                self._clear_heading_tab("Heading hesaplanmadi.")
+        except Exception as exc:  # pylint: disable=broad-except
+            self._status(f"Heading hatasi: {exc}", is_error=True)
         try:
             if self.calib_cb and self.calib_cb.isChecked():
                 self._update_calibration_tab(artifacts)
             else:
-                self._clear_calibration_tab("Kalibrasyon seçili değil.")
-        except Exception as exc:
-            self._status(f"Kalibrasyon hatası: {exc}", is_error=True)
+                self._clear_calibration_tab("Kalibrasyon seçili degil.")
+        except Exception as exc:  # pylint: disable=broad-except
+            self._status(f"Kalibrasyon hatasi: {exc}", is_error=True)
 
     def _update_summary_tab(self, artifacts: AnalysisArtifacts, time_column: str) -> None:
         """Veri özet sekmesini günceller."""
@@ -327,8 +362,8 @@ class MainWindow(QtWidgets.QMainWindow):
         dt = pd.to_datetime(df[time_column]).diff().dt.total_seconds().dropna()
         median_dt = dt.median() if not dt.empty else 0
         text = (
-            f"Satır sayısı: {row_count}\n"
-            f"Medyan örnekleme aralığı (s): {median_dt}\n"
+            f"Satir sayisi: {row_count}\n"
+            f"Medyan örnekleme araligi (s): {median_dt}\n"
             f"describe():\n{descr}"
         )
         self.summary_text.setPlainText(text)
@@ -354,13 +389,13 @@ class MainWindow(QtWidgets.QMainWindow):
         else:
             ax.legend()
         ax.set_xlabel("Zaman")
-        ax.set_ylabel("Değer")
+        ax.set_ylabel("Deger")
         ax.set_title("Zaman Serisi")
         fig.autofmt_xdate()
         self.timeseries_tab.canvas.draw()
 
     def _update_fft_tab(self, artifacts: AnalysisArtifacts, time_column: str, enabled: bool) -> None:
-        """FFT sekmesini günceller ve Plotly çıktısını embed eder."""
+        """FFT sekmesini günceller ve Plotly çiktisini embed eder ya da tarayiciya açar."""
         if self.fft_tab is None:
             return
         fig = self.fft_tab.figure
@@ -386,21 +421,33 @@ class MainWindow(QtWidgets.QMainWindow):
             ax.set_title("FFT Spektrumu")
             ax.legend()
         except Exception as exc:  # pylint: disable=broad-except
-            ax.text(0.5, 0.5, f"FFT hesaplanamadı: {exc}", ha="center", va="center", transform=ax.transAxes)
+            ax.text(0.5, 0.5, f"FFT hesaplanamadi: {exc}", ha="center", va="center", transform=ax.transAxes)
         self.fft_tab.canvas.draw()
 
-        if self.fft_web is not None:
-            try:
-                if artifacts.fft_figure is not None:
-                    import plotly.io as pio
+        if artifacts.fft_figure is None:
+            if self.fft_web is not None:
+                self.fft_web.setHtml("<html><body>Plotly figürü yok</body></html>")
+            return
 
-                    html = pio.to_html(artifacts.fft_figure, full_html=False)
-                    self.fft_web.setHtml(html)
-                else:
-                    self.fft_web.setHtml("<html><body>Plotly figürü yok</body></html>")
+        if WEBENGINE_AVAILABLE and self.fft_web is not None:
+            try:
+                import plotly.io as pio
+
+                html = pio.to_html(artifacts.fft_figure, full_html=False)
+                self.fft_web.setHtml(html)
             except Exception as exc:  # pylint: disable=broad-except
-                self._status(f"Plotly grafiği yüklenemedi: {exc}", is_error=True)
-                QtWidgets.QMessageBox.critical(self, "Hata", f"Plotly grafiği yüklenemedi: {exc}")
+                self._status(f"Plotly grafigi yüklenemedi: {exc}", is_error=True)
+                QtWidgets.QMessageBox.critical(self, "Hata", f"Plotly grafigi yüklenemedi: {exc}")
+        else:
+            try:
+                html_path = self._write_fft_html(artifacts)
+                if html_path is not None:
+                    open_in_browser(html_path)
+                    self._status("WebEngine yok, grafik tarayicida açildi.", is_error=False)
+                    QtWidgets.QMessageBox.information(self, "Bilgi", "WebEngine yok, grafik tarayicida açildi.")
+            except Exception as exc:  # pylint: disable=broad-except
+                self._status(f"Plotly fallback basarisiz: {exc}", is_error=True)
+                QtWidgets.QMessageBox.critical(self, "Hata", f"Plotly fallback basarisiz: {exc}")
 
     def _clear_heading_tab(self, message: str) -> None:
         """Heading sekmesini temizler."""
@@ -442,15 +489,14 @@ class MainWindow(QtWidgets.QMainWindow):
             first_vals = fused.head(5).round(2).to_list()
             total_rot = float(np.unwrap(np.deg2rad(fused)).ptp() * 180 / np.pi)
             summary = (
-                f"İlk 5 değer: {first_vals}\n"
+                f"İlk 5 deger: {first_vals}\n"
                 f"Min/Max: {fused.min():.2f} / {fused.max():.2f}\n"
-                f"Toplam açı değişimi: {total_rot:.2f} derece"
+                f"Toplam açi degisimi: {total_rot:.2f} derece"
             )
         except Exception:
             summary = "Heading özetlenemedi."
         self.heading_text.setPlainText(summary)
 
-        # Ek metrikler: drift, hata, stabilite
         drift_deg_s = float(df["gyro_z"].mean() * 180 / np.pi) if "gyro_z" in df else np.nan
         avg_err = float((fused - mag).abs().mean()) if len(fused) else np.nan
         stability_score = "Low"
@@ -527,13 +573,24 @@ class MainWindow(QtWidgets.QMainWindow):
         )
         self.calib_text.setPlainText(center_txt + matrix_txt)
 
-        # Kalite kutusu
         cond_num = np.linalg.cond(artifacts.mag_transform_matrix) if artifacts.mag_transform_matrix is not None else np.nan
         offset_mag = float(np.linalg.norm(artifacts.mag_center)) if artifacts.mag_center is not None else np.nan
         sufficiency = "OK" if artifacts.raw_df is not None and len(artifacts.raw_df) >= 50 else "Low"
         metrics = (
-            f"Soft-iron koşul sayısı: {cond_num:.2f}\n"
-            f"Hard-iron offset büyüklüğü: {offset_mag:.2f}\n"
-            f"Veri yeterliliği: {sufficiency}"
+            f"Soft-iron koşul sayisi: {cond_num:.2f}\n"
+            f"Hard-iron offset büyüklügü: {offset_mag:.2f}\n"
+            f"Veri yeterliligi: {sufficiency}"
         )
         self.calib_metrics.setPlainText(metrics)
+
+    def _write_fft_html(self, artifacts: AnalysisArtifacts) -> Optional[Path]:
+        """Plotly FFT grafigini dosyaya yazar ve yolu döner."""
+        if artifacts.fft_figure is None:
+            return None
+        reports_dir = Path("reports")
+        reports_dir.mkdir(parents=True, exist_ok=True)
+        html_path = reports_dir / f"fft_plot_{int(time.time())}.html"
+        import plotly.io as pio
+
+        pio.write_html(artifacts.fft_figure, file=str(html_path), auto_open=False, full_html=True)
+        return html_path

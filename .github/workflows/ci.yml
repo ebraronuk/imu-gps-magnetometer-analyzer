@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Repo checkout
+        uses: actions/checkout@v4
+
+      - name: Python kurulum
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: CLI bağımlılıkları kuruluyor
+        run: pip install -r requirements.txt
+
+      - name: GUI bağımlılıkları (opsiyonel)
+        run: |
+          echo "GUI bağımlılıkları deneniyor; WebEngine yoksa süreç devam edecek."
+          pip install -r requirements-gui.txt || echo "WebEngine kurulamadı, tarayıcı fallback kullanılacak."
+
+      - name: Kaynak dosyaları derle (py_compile)
+        run: |
+          echo "py_compile çalışıyor (hata olursa Türkçe mesajlarla durur)."
+          python - <<'PY'
+import py_compile
+from pathlib import Path
+
+for path in Path("src").rglob("*.py"):
+    py_compile.compile(str(path), doraise=True)
+PY
+
+      - name: Pytest
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          echo "Pytest başlıyor (GUI runtime testleri atlanacak)."
+          pytest -q

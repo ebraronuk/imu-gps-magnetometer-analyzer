@@ -3,6 +3,7 @@ import argparse
 from pathlib import Path
 
 from src.pipeline.pipeline import AnalysisArtifacts, PipelineConfig, run_basic_pipeline
+from src.pipeline.config_builder import build_pipeline_config
 from src.visualization.plot_timeseries import plot_timeseries
 from src.reporting.report_generator import build_basic_report
 from src.simulation.mag_simulator import generate_simulated_rotation
@@ -88,7 +89,7 @@ def main() -> None:
     elif args.input is None:
         raise SystemExit("Input path is required unless --simulate-mag or --gui is used.")
 
-    config = PipelineConfig(
+    config = build_pipeline_config(
         input_path=args.input,
         time_column=args.time_column,
         resample_rate=args.resample_rate,
