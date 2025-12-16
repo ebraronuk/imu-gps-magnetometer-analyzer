@@ -1,205 +1,137 @@
-# 📡 IMU–GPS–Magnetometer Analyzer
+# IMU-GPS-Magnetometer Analyzer
 
-Profesyonel uçuş testlerinin ihtiyaç duyduğu sensör log analiz hattını (IMU, manyetometre, gyro, GPS, barometrik basınç) yazılım ortamında uçtan uca gerçekleştiren bir araçtır.  
-Proje; zaman senkronizasyonu, manyetometre kalibrasyonu, heading hesaplama, sensör füzyonu, FFT tabanlı gürültü analizi ve etkileşimli görselleştirme gibi kritik avionik iş akışlarını içerir.
+Profesyonel uçuş test sensör logları (IMU, manyetometre, gyro, GPS, baro) için uçtan uca analiz hattı. Zaman senkronizasyonu, manyetometre kalibrasyonu, heading hesaplama, sensör füzyonu, FFT tabanlı gürültü analizi ve raporlama içerir.
 
 Bu çalışma hem öğrenme amaçlıdır hem de gerçek telemetri preprocessing zincirlerinin sadeleştirilmiş fakat mühendislik doğruluğu yüksek bir modelidir.
 
-##  Özellikler
+## Kurulum
+- CLI: `pip install -r requirements.txt`
+- GUI: `pip install -r requirements-gui.txt`
 
-- Çoklu sensör loglarını yükleme (CSV)
-- Zaman senkronizasyonu ve uniform örnekleme ızgarası
+## GUI Önkoşulları
+- PyQt5 + PyQtWebEngine GUI için önerilir (`pip install -r requirements-gui.txt`).
+- WebEngine varsa Plotly gömülü açılır; yoksa tarayıcı fallback devreye girer.
+
+## GUI Çalıştırma
+```
+python -m src.main --gui
+```
+
+## Özellikler
+
+- Çoklu sensör log yükleme (CSV)
+- Zaman senkronizasyonu ve uniform örnekleme
 - Opsiyonel normalizasyon
-- Manyetometre kalibrasyonu:
-  - Hard-iron bias çıkarımı
-  - Soft-iron ellipsoid fitting
-  - PSD regularization
+- Manyetometre kalibrasyonu: hard-iron bias giderimi, soft-iron ellipsoid fitting, PSD regularization
 - IMU bias hesaplama
-- Sensör füzyonu:
-  - Tilt-compensated heading  
-  - Complementary filter (gyro + mag)
+- Sensör füzyonu: tilt-compensated heading, complementary filter (gyro + mag)
 - FFT tabanlı frekans analizi
 - Plotly ile interaktif grafikler
 - HTML rapor üretimi
 - Sentetik uçuş verisi simülasyonu
 
-## Uçtan Uca Pipeline Mimarisi
+## Uçtan Uca Pipeline
 ```
-┌────────────────────────────────────────────────────────────────────────────┐
-│                             RAW SENSOR LOGS                                │
-│ accel_x, accel_y, accel_z | mag_x, mag_y, mag_z | gyro_z | GPS | pressure │
-└────────────────────────────────────────────────────────────────────────────┘
-                                    │
-                                    ▼
-┌────────────────────────────────────────────────────────────────────────────┐
-│                           CSV Loader Module                                │
-│ • Kolon doğrulama • Temizleme • Timestamp parse                            │
-└────────────────────────────────────────────────────────────────────────────┘
-                                    │
-                                    ▼
-┌────────────────────────────────────────────────────────────────────────────┐
-│                Time Synchronization & Resampling                           │
-│ • Uniform time grid • Eksik örnek doldurma (ffill)                         │
-│ • Opsiyonel z-score normalizasyon                                          │
-└────────────────────────────────────────────────────────────────────────────┘
-                                    │
-                                    ▼
-┌────────────────────────────────────────────────────────────────────────────┐
-│                        Magnetometer Calibration                             │
-│ • Hard-iron bias çıkarımı                                                  │
-│ • Soft-iron ellipsoid fitting                                              │
-│ • PSD regularization • Inverse sqrt transform                              │
-│ • Veri azsa güvenli fallback                                               │
-└────────────────────────────────────────────────────────────────────────────┘
-                                    │
-                                    ▼
-┌────────────────────────────────────────────────────────────────────────────┐
-│                          Orientation Estimation                             │
-│ • Tilt-compensated heading                                                 │
-│ • Complementary filter (gyro+mag)                                          │
-│ • Angle unwrap                                                             │
-└────────────────────────────────────────────────────────────────────────────┘
-                                    │
-                                    ▼
-┌────────────────────────────────────────────────────────────────────────────┐
-│                         FFT & Noise Analysis                                │
-│ • Frekans alanı • Titreşim & gürültü karakterizasyonu                      │
-└────────────────────────────────────────────────────────────────────────────┘
-                                    │
-                                    ▼
-┌────────────────────────────────────────────────────────────────────────────┐
-│                               Visualization                                 │
-│ • Veri Özeti • Zaman Serisi • FFT • Heading • Kalibrasyon                  │
-└────────────────────────────────────────────────────────────────────────────┘
+RAW SENSOR LOGS (accel, gyro, mag, GPS, baro)
+        |
+        v
+CSV Loader (kolon kontrolü, temizleme, timestamp parse)
+        |
+        v
+Time Sync & Resampling (uniform grid, ffill, opsiyonel z-score)
+        |
+        v
+Calibration (hard/soft iron, ellipsoid fit, PSD reg, fallback)
+        |
+        v
+Orientation Estimation (tilt compensation, complementary filter)
+        |
+        v
+FFT & Noise Analysis
+        |
+        v
+Visualization & Reporting (Plotly, HTML)
 ```
 
-# GUI Kullanımı
+## GUI
 
-Proje, PyQt5 tabanlı etkileşimli bir arayüz içerir.
-Bu arayüz ile:
+- GUI, pipeline'ın frontend arayüzüdür; tüm analizler backend pipeline'da yapılır.
 
-CSV dosyası yükleme
-Zaman senkronizasyonu
-Manyetometre kalibrasyonu
-Heading hesaplama (tilt-compensated + fused)
-FFT gürültü analizi
-Sentetik veri üretimi
-işlemleri tek tıkla yapılabilir.
+GUI'yi başlatmak için:
+```
+python -m src.main --gui
+```
 
-GUI’yi başlatmak için:
+## Fallback Davranışı
+- WebEngine yüklü değilse FFT/Plotly grafikleri `reports/` altına yazılır ve sistem tarayıcısında açılır.
+- Uygulama kapanmaz; status bar ve uyarı kutusu Türkçe bilgi verir.
 
-  python -m src.main --gui
-
-
-GUI’nin mimarisi, ekran görüntüleri ve sekmelerin teknik açıklamaları için:
-  docs/Gui_Overview.md
-  
 ## Simülasyon Modülü
 
-Gerçek log olmadığında veya algoritmaların doğrulanması gerektiğinde:
-```
-  --simulate-mag
-```
-
-ile sentetik manyetometre + gyro + ivme veri seti üretilir.
-
-Simülasyon içerir:
-
-- Dönen platform manyetik vektörleri
-- Hafif drift içeren gyro
-- Hafif gürültülü ivme sensörü
-- Düzenli timestamp grid
-- Referans heading profili
-
+Gerçek log olmadığında veya algoritmaların doğrulanması gerektiğinde `--simulate-mag` ile sentetik manyetometre + gyro + ivme veri seti üretilir. Simülasyon; dönen platform manyetik vektörleri, hafif drift içeren gyro, hafif gürültülü ivme sensörü, düzenli timestamp grid'i ve referans heading profilini kapsar.
 
 ## Manyetometre Kalibrasyonu
-
-Projede profesyonel kalibrasyon uygulanır:
 
 - 3D ellipsoid fitting  
 - Hard-iron offset  
 - Soft-iron deformasyon matrisi  
 - PSD regularization  
 - Normalize edilmiş küre için inverse sqrt transform  
-- Veri yetersiz olduğunda fallback  
+- Veri yetersiz olduğunda güvenli fallback  
 
-**Örnek çıktı:**
-
+Örnek çıktı:
+```
 Hard-iron center: [-6.7864, 2.7794, 24.0934]
-
 Soft-iron matrix:
 [[ 0.0356 -0.0009  0.0021]
  [-0.0009  0.0355 -0.0021]
  [ 0.0021 -0.0021  0.0236]]
-
 Corrected magnetometer preview:
    mag_x   mag_y   mag_z
 0  0.9379  0.0806  0.5387
 1  0.9379  0.0806  0.5387
-
+```
 
 ## Yönelim (Heading) Hesaplama
 
 ### Tilt-Compensated Heading
-- Accelerometer → roll & pitch hesaplanır  
-- Magnetometer → tilt compensation uygulanır  
+- Accelerometer'dan roll ve pitch hesaplanır.
+- Magnetometreye tilt compensation uygulanır.
 - Heading = `atan2(mag_y', mag_x')`
 
 ### Complementary Filter (Gyro + Mag Fusion)
-
 ```
-yaw = α * (yaw + gyro_z * dt) + (1 - α) * mag_heading
+yaw = alpha * (yaw + gyro_z * dt) + (1 - alpha) * mag_heading
 ```
+İyileştirmeler: ilk seed manyetik heading, angle unwrap ile 360 derece sıçramaları engelleme, senkronize zaman ızgarasında çalışma.
 
-İyileştirmeler:
+## Görselleştirme
 
-- İlk seed manyetik heading  
-- Angle unwrap ile 360° sıçramalarını engelleme  
-- Senkronize zaman ızgarası üzerinde çalışma  
+Plotly ile interaktif grafikler: IMU zaman serisi, manyetometre dağılımı, gyro vs fused heading, FFT spektrumu, kalibrasyon öncesi/sonrası manyetik küre.
 
-##  Görselleştirme
+## Komut Örnekleri
 
-Plotly ile interaktif grafikler:
-
-- IMU zaman serisi  
-- Manyetometre dağılımı  
-- Gyro vs fused heading  
-- FFT spektrumu  
-- Kalibrasyon öncesi / sonrası manyetik küre  
-
-##  Bilimsel Arka Plan
-
-Proje şu mühendislik alanlarının birleşimidir:
-
-- **Sinyal İşleme:** FFT, filtreler, noise profiling  
-- **Sensör Füzyonu:** complementary filter, drift kompanzasyonu  
-- **Manyetometre Modelleme:** ellipsoid fitting, soft/hard-iron  
-- **Zaman Serileri:** resampling, senkronizasyon  
-- **Oryantasyon Matematiği:** tilt compensation, Euler açıları  
-
-
-##  Komut Örnekleri
-
-### Özet
+Özet:
 ```
-  python -m src.main --input example_logs/heading_demo.csv --summary
+python -m src.main --input example_logs/heading_demo.csv --summary
 ```
 
-### FFT + Plot
+FFT + Plot:
 ```
-  python -m src.main --input example_logs/heading_demo.csv --fft --plot
-```
-
-### Heading + Kalibrasyon
-```
-  python -m src.main --input example_logs/heading_demo.csv --heading --mag-calib --plot
+python -m src.main --input example_logs/heading_demo.csv --fft --plot
 ```
 
-### Sentetik veri
+Heading + Kalibrasyon:
 ```
-  python -m src.main --simulate-mag --heading --fft --plot
+python -m src.main --input example_logs/heading_demo.csv --heading --mag-calib --plot
 ```
-##  Proje Yapısı
+
+Sentetik veri:
+```
+python -m src.main --simulate-mag --heading --fft --plot
+```
+
+## Proje Yapısı
 ```
 src/
   pipeline/
@@ -213,8 +145,6 @@ docs/
 tests/
 ```
 
-##  Projenin Amacı
+## Projenin Amacı
 
-Bu proje; aviyonik sensör işleme zincirinin tüm aşamalarını kendi başıma uygulayıp, sensör füzyonu, manyetometre kalibrasyonu, sinyal işleme ve telemetri pipeline tasarımı konularında kendimi geliştirmek için hazırlanmıştır.
-
-Gerçek R&D projelerinde kullanılan tekniklerin sadeleştirilmiş fakat doğruluğu korunmuş bir modelini içerir.
+Bu proje; aviyonik sensör işleme zincirinin tüm aşamalarını kendi başıma uygulayıp, sensör füzyonu, manyetometre kalibrasyonu, sinyal işleme ve telemetri pipeline tasarımı konularında deneyim kazanmak için hazırlandı. Gerçek R&D projelerinde kullanılan tekniklerin sadeleştirilmiş fakat doğruluğu korunmuş bir modelini içerir.

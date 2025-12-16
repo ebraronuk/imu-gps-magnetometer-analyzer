@@ -1,120 +1,43 @@
-# IMU–GPS–Magnetometer Analyzer – Sistem Mimarisi
+# IMU-GPS-Magnetometer Analyzer - Sistem Mimarisi
 
-Bu belge, projenin çekirdek mimarisini ve bileşenler arası veri akışını tanımlar.
-Amaç, aviyonik sensör preprocessing zincirinin uçtan uca nasıl işlendiğini teknik doğrulukla göstermektir.
+Bu belge, core pipeline mimarisini ve CLI/GUI akışlarının nasıl aynı çekirdeği kullandığını özetler. Amaç, avionik sensör preprocessing zincirinin teknik ayrıştırmasını ve bağımlılık sınırlarını netleştirmektir.
 
-# 1. Genel Veri Akışı
-
-Aşağıdaki şema, ham sensör loglarının GUI veya CLI üzerinden pipeline’a girip analiz çıktısına dönüşmesini göstermektedir:
+## Genel Akış
 ```
-RAW SENSOR LOGS
-(accel, gyro, mag, GPS, pressure)
-        │
-        ▼
-CSV Loader
-(column validation, timestamp parsing)
-        │
-        ▼
-Time Sync & Resampling
-(uniform grid, ffill, optional normalization)
-        │
-        ▼
-Calibration
-(hard/soft iron, ellipsoid fitting,
-PSD regularization, safe fallback)
-        │
-        ▼
-Orientation Estimation
-(tilt compensation, complementary filter,
-angle unwrap, stability metrics)
-        │
-        ▼
-FFT Analysis
-(frequency domain noise characterization)
-        │
-        ▼
-Visualization & Reporting
-(Plotly, Matplotlib, HTML report)
-
+RAW LOGS -> CSV Loader -> Time Sync/Resample -> Calibration -> Orientation -> FFT -> Visualization/Report
 ```
 
-# 2. Pipeline Katmanları
-2.1. Data Loaders
-
-CSV doğrulama
-Eksik kolon kontrolü
-Timestamp parse (UTC-aware)
-
-2.2. Preprocessing
-
-Time index oluşturma
-Fixed-rate resampling
-Opsiyonel z-score normalizasyon
-
-2.3. Calibration
-
-Hard-iron offset çıkarımı
-Soft-iron ellipsoid fitting
-Positive-semidefinite regularization
-Inverse sqrt dönüşümü
-Veri yetersiz ise fallback
-
-2.4. Orientation Estimation
-
-Tilt-compensated heading
-Gyro integration + complementary fusion
-Angle unwrap
-Stabilite skoru üretimi
-
-2.5. FFT / Noise Analysis
-
-Per-axis FFT
-Titreşim bantlarının çıkarılması
-Spektrum genliği ve dağılımı
-
-2.6. Visualization
-
-Zaman serileri
-FFT spektrumu
-Heading eğrileri
-Kalibrasyon öncesi/sonrası dağılımlar
-
-# 3. GUI Entegrasyonu
-
-GUI, pipeline’ın tamamen üstüne oturan bir frontend katmanıdır:
-
-User Input (GUI)
-        ↓
-PipelineConfig
-        ↓
-run_basic_pipeline()
-        ↓
-Artifacts
-        ↓
-GUI Tabs (Summary, TimeSeries, FFT, Heading, Calibration)
-
-
-Her tab sadece kendi ihtiyaç duyduğu artifact’leri işler.
-
-İster CLI ister GUI olsun, aynı core işlem hattı kullanılır ve bu modülerlik profesyonel avionik yazılım tasarım prensipleriyle uyumludur.
-
-# 4. Kod Organizasyonu
+## CLI Akışı (src/main.py)
 ```
-src/
-├── pipeline/           # PipelineConfig, run_basic_pipeline
-├── orientation/        # Tilt compensation, complementary filter
-├── calibration/        # Hard/soft iron + ellipsoid fit
-├── preprocessing/      # Time sync, normalization
-├── visualization/      # Plotly + Matplotlib grafikleri
-├── data_loaders/       # CSV loader
-└── gui/                # PyQt5 GUI
+argparse -> PipelineConfig (config_builder) -> run_basic_pipeline -> AnalysisArtifacts -> (summary/plots/report)
 ```
 
-# 5. Test Yapısı
+## GUI Akışı
 ```
+PyQt5 GUI -> PipelineConfig (config_builder) -> run_basic_pipeline -> AnalysisArtifacts -> Sekmeler
+```
+- GUI, pipeline’ın frontend katmanı; hesaplama backend pipeline’da kalır.
+- WebEngine sadece GUI’de kullanılır (Plotly embed). CLI bağımsızdır.
 
-tests/
-├── test_normalization.py
-├── test_ellipsoid_fit.py
-└── test_pipeline.py
-```
+## GUI Önkoşulları ve Fallback
+- Kurulum: `pip install -r requirements-gui.txt` (PyQt5 + PyQtWebEngine).
+- WebEngine varsa Plotly içerde gömülü; yoksa FFT/Plotly `reports/` altına yazılır ve sistem tarayıcısında açılır. Uygulama kapanmaz, status bar/mesaj kutusu Türkçe bilgi verir.
+
+## AnalysisArtifacts
+- Pipeline çıktılarının konteyneri: ham ve senkronize DataFrame’ler, normalize edilmiş veri, kalibrasyon çıktıları (center, transform), heading serileri, FFT figürü, görselleştirme tabloları.
+- CLI ve GUI aynı nesneyi tüketir; hesaplama tek yerde tutulur.
+
+## Katmanlar ve Modüller
+- `data_loaders/csv_loader.py`: CSV doğrulama, timestamp parse.
+- `preprocessing/time_sync.py`, `preprocessing/normalization.py`: zaman ızgarası, resample, opsiyonel z-score.
+- `calibration/*`: hard/soft-iron, ellipsoid fit, PSD reg, IMU bias.
+- `orientation/orientation_estimator.py`: tilt compensation, complementary fusion, unwrap.
+- `filters/*`: FIR/IIR yardımcıları, complementary/Kalman.
+- `visualization/*`: Plotly zaman serisi/FFT; `reporting/report_generator.py` HTML rapor.
+- `simulation/mag_simulator.py`: sentetik mag/gyro/ivme.
+
+## Tasarım Nedenleri
+- Test edilebilirlik: her katman ayrı modül, birim testler izole.
+- Ayrışma: GUI/CLI sadece `PipelineConfig` + `run_basic_pipeline`; frontend değişse de çekirdek stabil.
+- Yeniden kullanım: kalibrasyon, heading, FFT bölümleri bağımsız taşınabilir.
+- Hata izolasyonu: katman giriş/çıkışları belirgin, arıza kökü hızlı bulunur.
